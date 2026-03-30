@@ -41,7 +41,29 @@
   when: ansible_distribution_major_version | int >= 8
 
 # RHEL 7 : les user namespaces sont désactivés par défaut, Podman rootless en a besoin
-- name: Enable user namespaces in kernel (RHEL 7)
+# Il faut DEUX choses : le paramètre kernel grubby + le sysctl
+- name: Check if user namespaces kernel parameter is set (RHEL 7)
+  ansible.builtin.command: grubby --info="{{ '{{' }} grubby --default-kernel {{ '}}' }}"
+  register: grubby_info
+  changed_when: false
+  failed_when: false
+  when: ansible_distribution_major_version == '7'
+
+- name: Check current user.max_user_namespaces value (RHEL 7)
+  ansible.builtin.command: sysctl -n user.max_user_namespaces
+  register: current_userns
+  changed_when: false
+  failed_when: false
+  when: ansible_distribution_major_version == '7'
+
+- name: Enable user namespaces kernel boot parameter (RHEL 7)
+  ansible.builtin.command: grubby --args="namespace.unpriv_enable=1" --update-kernel="ALL"
+  when:
+    - ansible_distribution_major_version == '7'
+    - "'namespace.unpriv_enable=1' not in grubby_info.stdout | default('')"
+  register: grubby_userns_result
+
+- name: Enable user namespaces sysctl (RHEL 7)
   ansible.posix.sysctl:
     name: user.max_user_namespaces
     value: '15000'
@@ -49,6 +71,21 @@
     reload: yes
     state: present
   when: ansible_distribution_major_version == '7'
+
+- name: Set reboot required flag if user namespaces were just enabled (RHEL 7)
+  ansible.builtin.set_fact:
+    podman_reboot_required: true
+  when:
+    - ansible_distribution_major_version == '7'
+    - grubby_userns_result is changed or (current_userns.stdout | default('0') | int == 0)
+
+- name: Warn if reboot required for user namespaces (RHEL 7)
+  ansible.builtin.debug:
+    msg:
+      - "REBOOT REQUIRED: User namespaces kernel parameter has been added."
+      - "Podman rootless will not work until the node is rebooted."
+      - "Run: ansible -m reboot {{ inventory_hostname }}"
+  when: podman_reboot_required | default(false) and ansible_distribution_major_version == '7'
 
 - name: Verify Podman installation
   ansible.builtin.command: podman --version

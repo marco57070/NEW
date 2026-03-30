@@ -50,6 +50,7 @@
 
 - name: Handle container images
   ansible.builtin.include_tasks: images.yml
+  when: not (podman_reboot_required | default(false))
   tags: [images, podman_images]
 
 # ===== GESTION DES QUADLETS =====
