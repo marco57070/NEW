@@ -201,15 +201,16 @@
       when: item.stat.exists
       register: transfer_results
 
+    - name: Build list of successfully transferred files
+      ansible.builtin.set_fact:
+        transferred_image_files: "{{ transfer_results.results | default([]) | rejectattr('skipped', 'defined') | map(attribute='item') | map(attribute='item') | list }}"
+
     - name: Load images into Podman on target
-      ansible.builtin.shell: "sudo -u {{ podman_service_account_name }} -i podman load -i {{ podman_remote_images_dir }}/{{ item.item }}"
+      ansible.builtin.shell: "sudo -u {{ podman_service_account_name }} -i podman load -i {{ podman_remote_images_dir }}/{{ item }}"
       args:
         executable: /bin/bash
-      loop: "{{ transfer_results.results | default([]) }}"
+      loop: "{{ transferred_image_files }}"
       register: image_load_results
-      when:
-        - item is not skipped
-        - item is changed or item is succeeded
 
     - name: Clean up temporary image files on target
       ansible.builtin.file:
