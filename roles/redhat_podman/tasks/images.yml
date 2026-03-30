@@ -92,17 +92,26 @@
         - podman_on_controller.rc == 0
         - not item.stat.exists
 
+    - name: Re-check tar files after save
+      ansible.builtin.stat:
+        path: "{{ podman_controller_images_dir }}/{{ item | replace('/', '_') | replace(':', '_') }}.tar"
+      loop: "{{ podman_images_to_load }}"
+      register: tar_files_after_save
+      delegate_to: localhost
+      become: no
+      when: podman_on_controller.rc == 0
+
     - name: Ensure group write permissions on saved tar files
       ansible.builtin.file:
         path: "{{ podman_controller_images_dir }}/{{ item.item | replace('/', '_') | replace(':', '_') }}.tar"
         mode: '0664'        # rw-rw-r-- (Ecriture pour le groupe)
         group: "ict-linux"
-      loop: "{{ tar_files_stat.results }}"
+      loop: "{{ tar_files_after_save.results | default([]) }}"
       delegate_to: localhost
       become: no
       when:
         - podman_on_controller.rc == 0
-        - not item.stat.exists
+        - item.stat.exists
 
     - name: Check if skopeo is available
       ansible.builtin.command:
