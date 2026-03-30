@@ -1,10 +1,17 @@
 # roles/redhat_podman/tasks/storage.yml
 
 ---
-- name: Install LVM packages if not present
+- name: Install LVM packages (RHEL 7 via yum)
+  ansible.builtin.yum:
+    name: lvm2
+    state: present
+  when: ansible_distribution_major_version == '7'
+
+- name: Install LVM packages (RHEL 8+ via dnf)
   ansible.builtin.dnf:
     name: lvm2
     state: present
+  when: ansible_distribution_major_version | int >= 8
 
 - name: Create volume groups
   community.general.lvg:
@@ -34,16 +41,18 @@
   when: item.size_percent is defined
   register: lv_creation_percent
 
-- name: Set combined LV creation result
-  ansible.builtin.set_fact:
-    lv_creation: "{{ lv_creation_gb if lv_creation_gb is not skipped else lv_creation_percent }}"
+- name: Check logical volume devices exist
+  ansible.builtin.stat:
+    path: "/dev/{{ item.vg }}/{{ item.name }}"
+  loop: "{{ podman_mountpoints | default([]) }}"
+  register: lv_device_check
 
 - name: Create filesystems on logical volumes
   community.general.filesystem:
     fstype: xfs
-    dev: "/dev/{{ item.vg }}/{{ item.name }}"
-  loop: "{{ podman_mountpoints | default([]) }}"
-  when: lv_creation is changed
+    dev: "/dev/{{ item.item.vg }}/{{ item.item.name }}"
+  loop: "{{ lv_device_check.results }}"
+  when: item.stat.exists
 
 - name: Ensure mount paths exist
   ansible.builtin.file:
