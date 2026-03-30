@@ -5,7 +5,7 @@
   ansible.builtin.assert:
     that:
       - podman_service_account_name is defined
-      - user_creation_result is defined
+      - user_creation_result is defined or _podman_user_home is defined
       - cleaned_podman_images is defined
       - image_tar_mapping is defined
       - controller_images_dir is defined
@@ -15,7 +15,7 @@
       Cela signifie que ce fichier (images_target.yml) est exécuté avant ses dépendances.
 
       Variables requises :
-      - user_creation_result (définie dans user.yml)
+      - user_creation_result ou _podman_user_home (définies dans user.yml)
       - cleaned_podman_images (définie dans images.yml)
       - image_tar_mapping (définie dans images_controller.yml)
 
@@ -29,14 +29,14 @@
     state: directory
     mode: '0755'
     owner: "{{ podman_service_account_name }}"
-    group: "{{ user_creation_result.group }}"
+    group: "{{ _podman_user_group | default(podman_service_account_name) }}"
 
 - name: "[Cible] Transférer les archives des images vers le nœud cible"
   ansible.builtin.copy:
     src: "{{ controller_images_dir }}/{{ item.value }}"
     dest: "{{ target_images_dir }}/{{ item.value }}"
     owner: "{{ podman_service_account_name }}"
-    group: "{{ user_creation_result.group }}"
+    group: "{{ _podman_user_group | default(podman_service_account_name) }}"
     mode: '0644'
   loop: "{{ image_tar_mapping | dict2items }}"
   register: copy_result

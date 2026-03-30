@@ -21,8 +21,8 @@
   ansible.builtin.set_fact:
     _podman_user_home: "{{ user_creation_result.home | default(podman_user_home) }}"
     _podman_user_name: "{{ user_creation_result.name | default(podman_service_account_name) }}"
-    _podman_user_group: "{{ user_creation_result.group | default(omit) }}"
-    _podman_user_uid: "{{ user_creation_result.uid | default(omit) }}"
+    _podman_user_group: "{{ user_creation_result.group | default(podman_service_account_name) }}"
+    _podman_user_uid: "{{ user_creation_result.uid | default('') }}"
 
 - name: Disable password expiration for service account
   ansible.builtin.command: chage -M -1 {{ podman_service_account_name }}

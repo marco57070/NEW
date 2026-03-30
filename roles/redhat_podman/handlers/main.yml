@@ -26,7 +26,7 @@
 
 - name: apply selinux contexts
   ansible.builtin.command: >
-    restorecon -RvF {{ user_creation_result.home }}
+    restorecon -RvF {{ _podman_user_home | default(podman_user_home) }}
   listen: "apply selinux contexts"
 
 # ===== NOUVEAUX HANDLERS =====
