@@ -1,0 +1,60 @@
+# roles/redhat_podman/tasks/selinux.yml
+
+---
+- name: Check SELinux status
+  ansible.builtin.command: getenforce
+  register: selinux_status
+  changed_when: false
+  failed_when: false
+
+- name: Configure SELinux contexts
+  when: selinux_status.stdout | default('Disabled') | lower == 'enforcing'
+  block:
+    # --- Étape 1 : Récupération des infos utilisateur ---
+    - name: Ensure user info is loaded
+      ansible.builtin.include_tasks: common_user_info.yml
+
+    # --- Étape 2 : Définition des contextes ---
+    - name: Define specific SELinux contexts for container storage
+      community.general.sefcontext:
+        target: "{{ item.target }}"
+        setype: "{{ item.setype }}"
+        state: present
+      loop:
+        # Contextes génériques pour le home
+        - { target: "{{ podman_user_fact.home }}/\\.config/containers(/.*)?", setype: 'container_home_t' }
+        - { target: "{{ podman_user_fact.home }}/\\.local/share/containers(/.*)?", setype: 'container_var_lib_t' }
+
+        # Contextes spécifiques CRITIQUES pour le stockage overlay rootless
+        - { target: "{{ podman_user_fact.home }}/\\.local/share/containers/storage(/.*)?", setype: 'container_file_t' }
+        - { target: "{{ podman_user_fact.home }}/\\.local/share/containers/storage/overlay(/.*)?", setype: 'container_ro_file_t' }
+        - { target: "{{ podman_user_fact.home }}/\\.local/share/containers/storage/overlay-images(/.*)?", setype: 'container_ro_file_t' }
+        - { target: "{{ podman_user_fact.home }}/\\.local/share/containers/storage/overlay-layers(/.*)?", setype: 'container_ro_file_t' }
+        - { target: "{{ podman_user_fact.home }}/\\.local/share/containers/storage/overlay-containers(/.*)?", setype: 'container_file_t' }
+        - { target: "{{ podman_user_fact.home }}/\\.local/share/containers/storage/volumes(/.*)?", setype: 'container_file_t' }
+      register: sefcontext_result
+
+    # --- Étape 3 : Application ---
+    - name: Ensure critical directories exist before restorecon
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ podman_user_fact.name }}"
+        group: "{{ podman_user_fact.gid }}"
+        mode: '0755'
+      loop:
+        - "{{ podman_user_fact.home }}/.local/share/containers"
+        - "{{ podman_user_fact.home }}/.config/containers"
+
+    - name: Apply SELinux contexts
+      ansible.builtin.command: "restorecon -RvF {{ podman_user_fact.home }}"
+      # On applique si les contextes ont changé OU si on force la validation via variable
+      when: sefcontext_result.changed or podman_validate_selinux | default(true)
+      register: restorecon_result
+      changed_when: restorecon_result.stdout | length > 0
+
+    - name: Set container_manage_cgroup boolean
+      ansible.posix.seboolean:
+        name: container_manage_cgroup
+        state: yes
+        persistent: yes

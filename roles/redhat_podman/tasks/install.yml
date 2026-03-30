@@ -1,0 +1,43 @@
+# roles/redhat_podman/tasks/install.yml
+
+---
+- name: Verify RHEL system
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == 'RedHat'
+    fail_msg: "This role is designed for RHEL systems only"
+    success_msg: "Running on RHEL {{ ansible_distribution_version }}"
+
+- name: Install container-tools module (RHEL 8)
+  ansible.builtin.dnf:
+    name: "@container-tools"
+    state: present
+  when: ansible_distribution_major_version == '8'
+  register: podman_install_result
+
+- name: Install container-tools package (RHEL 9+)
+  ansible.builtin.dnf:
+    name: container-tools
+    state: present
+  when: ansible_distribution_major_version != '8'
+  register: podman_install_result
+
+- name: Install additional dependencies
+  ansible.builtin.dnf:
+    name:
+      - bash-completion
+      - lvm2
+      - policycoreutils-python-utils  # For semanage
+    state: present
+
+- name: Verify Podman installation
+  ansible.builtin.command: podman --version
+  register: podman_version
+  changed_when: false
+  failed_when: podman_version.rc != 0
+
+- name: Display installation result
+  ansible.builtin.debug:
+    msg:
+      - "Successfully installed {{ podman_version.stdout }}"
+      - "Method: {{ 'Module install (RHEL 8)' if ansible_distribution_major_version == '8' else 'Package install (RHEL 9+)' }}"
