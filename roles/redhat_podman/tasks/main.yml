@@ -35,10 +35,11 @@
     - ansible_distribution_major_version == '8'
   tags: [cgroups, podman_cgroups]
 
-- name: Configure user service delegation
+- name: Configure user service delegation (RHEL 8+)
   ansible.builtin.include_tasks: delegation.yml
   when:
     - podman_configure_user_delegation | default(true)
+    - ansible_distribution_major_version | int >= 8
     - not (podman_reboot_required | default(false))
   tags: [delegation, podman_delegation, podman_quadlets]
 
@@ -58,7 +59,10 @@
     if [ -f /sys/fs/cgroup/cgroup.controllers ]; then echo "v2"; else echo "v1"; fi
   register: current_cgroups_version
   changed_when: false
-  when: podman_quadlet_files is defined and podman_quadlet_files | length > 0
+  when:
+    - podman_quadlet_files is defined
+    - podman_quadlet_files | length > 0
+    - ansible_distribution_major_version | int >= 8
   tags: [podman_quadlets]
 
 - name: Deploy Quadlet services (if cgroups v2 active)
@@ -66,9 +70,18 @@
   when:
     - podman_quadlet_files is defined
     - podman_quadlet_files | length > 0
+    - ansible_distribution_major_version | int >= 8
     - current_cgroups_version.stdout == "v2"
     - not (podman_reboot_required | default(false))
   tags: [podman_quadlets]
+
+- name: Deploy classic systemd units (RHEL 7)
+  ansible.builtin.import_tasks: systemd_units.yml
+  when:
+    - ansible_distribution_major_version == '7'
+    - podman_systemd_unit_files is defined
+    - podman_systemd_unit_files | length > 0
+  tags: [systemd_units, podman_units]
 
 - name: Validate Podman setup
   ansible.builtin.include_tasks: validate.yml

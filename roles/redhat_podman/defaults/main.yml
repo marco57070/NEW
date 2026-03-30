@@ -63,3 +63,7 @@ podman_journald_config:
 
 podman_journal_access_groups:
   - "systemd-journal"
+
+# Classic systemd unit files for RHEL 7 (equivalent des Quadlets)
+# Fichiers à placer dans roles/redhat_podman/files/systemd/
+podman_systemd_unit_files: []

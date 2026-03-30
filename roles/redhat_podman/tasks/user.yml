@@ -21,6 +21,23 @@
   ansible.builtin.command: chage -M -1 {{ podman_service_account_name }}
   changed_when: false
 
+# Rootless : subuid/subgid requis pour RHEL 7, bonne pratique sur 8/9
+- name: Ensure subuid entry exists for service account
+  ansible.builtin.lineinfile:
+    path: /etc/subuid
+    regexp: "^{{ podman_service_account_name }}:"
+    line: "{{ podman_service_account_name }}:100000:65536"
+    create: yes
+    mode: '0644'
+
+- name: Ensure subgid entry exists for service account
+  ansible.builtin.lineinfile:
+    path: /etc/subgid
+    regexp: "^{{ podman_service_account_name }}:"
+    line: "{{ podman_service_account_name }}:100000:65536"
+    create: yes
+    mode: '0644'
+
 - name: Check if .bashrc exists
   ansible.builtin.stat:
     path: "{{ user_creation_result.home }}/.bashrc"
@@ -54,11 +71,12 @@
     recurse: no  # CRITIQUE : Doit être à 'no' pour ne pas corrompre le stockage Podman
   when: user_creation_result is defined
 
-- name: Enable linger for the service account
+- name: Enable linger for the service account (RHEL 8+)
   ansible.builtin.command: "loginctl enable-linger {{ podman_service_account_name }}"
   register: linger_result
   changed_when: linger_result.rc == 0
   failed_when: linger_result.rc not in [0, 1]
+  when: ansible_distribution_major_version | int >= 8
 
 - name: Configure .bashrc for Podman environment
   ansible.builtin.blockinfile:

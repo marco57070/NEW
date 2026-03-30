@@ -5,30 +5,40 @@
   ansible.builtin.assert:
     that:
       - ansible_distribution == 'RedHat'
-    fail_msg: "This role is designed for RHEL systems only"
+      - ansible_distribution_major_version | int >= 7
+    fail_msg: "This role requires RHEL 7 or later (detected: {{ ansible_distribution }} {{ ansible_distribution_version }})"
     success_msg: "Running on RHEL {{ ansible_distribution_version }}"
+
+- name: Install Podman on RHEL 7 (via yum)
+  ansible.builtin.yum:
+    name:
+      - podman
+      - bash-completion
+      - lvm2
+      - policycoreutils-python
+    state: present
+  when: ansible_distribution_major_version == '7'
 
 - name: Install container-tools module (RHEL 8)
   ansible.builtin.dnf:
     name: "@container-tools"
     state: present
   when: ansible_distribution_major_version == '8'
-  register: podman_install_result
 
 - name: Install container-tools package (RHEL 9+)
   ansible.builtin.dnf:
     name: container-tools
     state: present
-  when: ansible_distribution_major_version != '8'
-  register: podman_install_result
+  when: ansible_distribution_major_version | int >= 9
 
-- name: Install additional dependencies
+- name: Install additional dependencies (RHEL 8+)
   ansible.builtin.dnf:
     name:
       - bash-completion
       - lvm2
-      - policycoreutils-python-utils  # For semanage
+      - policycoreutils-python-utils
     state: present
+  when: ansible_distribution_major_version | int >= 8
 
 - name: Verify Podman installation
   ansible.builtin.command: podman --version
@@ -40,4 +50,4 @@
   ansible.builtin.debug:
     msg:
       - "Successfully installed {{ podman_version.stdout }}"
-      - "Method: {{ 'Module install (RHEL 8)' if ansible_distribution_major_version == '8' else 'Package install (RHEL 9+)' }}"
+      - "Mode: {{ 'Degraded (RHEL 7 - no Quadlets, no cgroups v2)' if ansible_distribution_major_version == '7' else ('Module install (RHEL 8)' if ansible_distribution_major_version == '8' else 'Package install (RHEL 9+)') }}"
