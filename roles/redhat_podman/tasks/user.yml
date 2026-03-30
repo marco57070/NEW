@@ -76,6 +76,30 @@
     state: directory
     recurse: no  # CRITIQUE : Doit être à 'no' pour ne pas corrompre le stockage Podman
 
+# RHEL 7 : pas de loginctl enable-linger, créer le XDG_RUNTIME_DIR manuellement
+- name: Create XDG_RUNTIME_DIR for service account (RHEL 7)
+  ansible.builtin.file:
+    path: "/run/user/{{ _podman_user_uid }}"
+    state: directory
+    owner: "{{ _podman_user_name }}"
+    group: "{{ _podman_user_group }}"
+    mode: '0700'
+  when:
+    - ansible_distribution_major_version == '7'
+    - _podman_user_uid | default('') | length > 0
+
+# RHEL 7 : s'assurer que le runtime dir est recréé au boot via tmpfiles.d
+- name: Ensure XDG_RUNTIME_DIR persists across reboots (RHEL 7)
+  ansible.builtin.copy:
+    content: "d /run/user/{{ _podman_user_uid }} 0700 {{ _podman_user_name }} {{ _podman_user_group }} -\n"
+    dest: "/etc/tmpfiles.d/podman-{{ podman_service_account_name }}.conf"
+    owner: root
+    group: root
+    mode: '0644'
+  when:
+    - ansible_distribution_major_version == '7'
+    - _podman_user_uid | default('') | length > 0
+
 - name: Enable linger for the service account (RHEL 8+)
   ansible.builtin.command: "loginctl enable-linger {{ podman_service_account_name }}"
   register: linger_result
