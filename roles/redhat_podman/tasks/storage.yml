@@ -21,24 +21,35 @@
   loop: "{{ podman_volume_groups | default([]) }}"
   register: vg_creation
 
+- name: Check if logical volumes already exist
+  ansible.builtin.stat:
+    path: "/dev/{{ item.vg }}/{{ item.name }}"
+  loop: "{{ podman_mountpoints | default([]) }}"
+  register: lv_existing_check
+
 - name: Create logical volumes with size in GB
   community.general.lvol:
-    vg: "{{ item.vg }}"
-    lv: "{{ item.name }}"
-    size: "{{ item.size_gb }}g"
+    vg: "{{ item.item.vg }}"
+    lv: "{{ item.item.name }}"
+    size: "{{ item.item.size_gb }}g"
     state: present
-  loop: "{{ podman_mountpoints | default([]) }}"
-  when: item.size_gb is defined and item.size_percent is not defined
+  loop: "{{ lv_existing_check.results }}"
+  when:
+    - not item.stat.exists
+    - item.item.size_gb is defined
+    - item.item.size_percent is not defined
   register: lv_creation_gb
 
 - name: Create logical volumes with percentage
   community.general.lvol:
-    vg: "{{ item.vg }}"
-    lv: "{{ item.name }}"
-    size: "{{ item.size_percent }}%VG"
+    vg: "{{ item.item.vg }}"
+    lv: "{{ item.item.name }}"
+    size: "{{ item.item.size_percent }}%VG"
     state: present
-  loop: "{{ podman_mountpoints | default([]) }}"
-  when: item.size_percent is defined
+  loop: "{{ lv_existing_check.results }}"
+  when:
+    - not item.stat.exists
+    - item.item.size_percent is defined
   register: lv_creation_percent
 
 - name: Check logical volume devices exist
