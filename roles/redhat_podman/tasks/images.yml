@@ -182,24 +182,34 @@
       ansible.builtin.set_fact:
         all_image_files: "{{ (podman_image_files | default([])) + (image_tar_files | default([])) }}"
 
+    - name: Check image files exist on controller before transfer
+      ansible.builtin.stat:
+        path: "{{ podman_controller_images_dir }}/{{ item }}"
+      loop: "{{ all_image_files }}"
+      register: transfer_files_stat
+      delegate_to: localhost
+      become: no
+
     - name: Transfer image files to target
       ansible.builtin.copy:
-        src: "{{ podman_controller_images_dir }}/{{ item }}"
-        dest: "{{ podman_remote_images_dir }}/{{ item }}"
+        src: "{{ podman_controller_images_dir }}/{{ item.item }}"
+        dest: "{{ podman_remote_images_dir }}/{{ item.item }}"
         owner: "{{ podman_service_account_name }}"
         group: "{{ podman_service_account_name }}"
         mode: '0644'
-      loop: "{{ all_image_files }}"
+      loop: "{{ transfer_files_stat.results }}"
+      when: item.stat.exists
       register: transfer_results
 
     - name: Load images into Podman on target
-      ansible.builtin.shell: "sudo -u {{ podman_service_account_name }} -i podman load -i {{ podman_remote_images_dir }}/{{ item }}"
+      ansible.builtin.shell: "sudo -u {{ podman_service_account_name }} -i podman load -i {{ podman_remote_images_dir }}/{{ item.item }}"
       args:
         executable: /bin/bash
-      loop: "{{ all_image_files }}"
+      loop: "{{ transfer_results.results | default([]) }}"
       register: image_load_results
-      # Optimisation : On ne charge que si le fichier a été transféré (changed) ou si on force
-      when: transfer_results.results | selectattr('item', 'equalto', item) | map(attribute='changed') | first | default(true)
+      when:
+        - item is not skipped
+        - item is changed or item is succeeded
 
     - name: Clean up temporary image files on target
       ansible.builtin.file:
